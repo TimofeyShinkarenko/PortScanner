@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+from tcp_scanner import TCPScanner
+from udp_scanner import UDPScanner
+import argparse
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description='Port scanner utility',
+        usage='portscan [OPTIONS] IP_ADDRESS [{tcp|udp}[/[PORT|PORT-PORT],...]]...'
+    )
+
+    parser.add_argument(
+        '-t', '--timeout',
+        type=float,
+        default=2.0,
+        help='response timeout in seconds (default: 2s)'
+    )
+
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='verbose mode'
+    )
+
+    parser.add_argument(
+        '-g', '--guess',
+        type=str,
+        default=None,
+        help='detect application layer protocol (e.g., HTTP, ECHO)'
+    )
+
+    parser.add_argument(
+        'ip_address',
+        help='target IP address'
+    )
+
+    parser.add_argument(
+        'port_specs',
+        nargs='*',
+        help='port specifications in format: {tcp|udp}[/[PORT|PORT-PORT],...]'
+    )
+
+    return parser.parse_args()
+
+
+def parse_port_specs(port_specs):
+    ports = {'tcp': set(), 'udp': set()}
+
+    for spec in port_specs:
+        if '/' in spec:
+            protocol, num_str = spec.split('/', 1)
+            if protocol in ports:
+                ports[protocol].update(parse_numbers(num_str))
+
+            if protocol == 'tcp udp':
+                ports['udp'].update(parse_numbers(num_str))
+                ports['tcp'].update(parse_numbers(num_str))
+
+        elif spec in ports:
+            ports[spec].update(range(1, 65536))
+
+    return {'tcp': sorted(list(ports['tcp'])),
+            'udp': sorted(list(ports['udp']))}
+
+
+def parse_numbers(num_str: str):
+    num_list = num_str.split(',')
+
+    for str_with_num in num_list:
+        edges = [int(n) for n in str_with_num.split('-')]
+
+        for num in range(edges[0], edges[-1] + 1):
+            yield num
+
+
+def run():
+    args = parse_arguments()
+    ports = parse_port_specs(args.port_specs)
+
+    tcp_scanner = TCPScanner(
+        target_ip=args.ip_address,
+        target_ports=ports['tcp'],
+        timeout=args.timeout,
+        verbose=args.verbose,
+        guess=args.guess
+    )
+    udp_scanner = UDPScanner(
+        target_ip=args.ip_address,
+        target_ports=ports['udp'],
+        timeout=args.timeout,
+        verbose=args.verbose,
+        guess=args.guess
+    )
+
+    for scan in tcp_scanner.scan_all():
+        print(scan)
+
+    for scan in udp_scanner.scan_all():
+        print(scan)
+
+
+if __name__ == '__main__':
+    run()
